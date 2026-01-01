@@ -1,6 +1,6 @@
 pipeline {
     agent any
-
+//s
     environment {
         GITEA_REGISTRY = "20.199.168.227:3000"
         GITEA_NAMESPACE = "azureuser"
