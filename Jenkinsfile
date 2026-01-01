@@ -2,57 +2,62 @@ pipeline {
     agent any
 
     environment {
+        GITEA_REGISTRY = "20.199.168.227:3000"
+        GITEA_NAMESPACE = "azureuser"
         IMAGE_NAME = "devops-demo"
-        DOCKER_REPO = "houssamechchari/devops-demo"
-        GITEA_URL = "http://20.199.168.227:3000/azureuser/devops-demo.git"
+        IMAGE_TAG = "latest"
     }
 
     stages {
 
-        stage('Checkout from GitHub') {
+        stage('Checkout source code') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker image') {
             steps {
-                sh 'docker build -t $IMAGE_NAME .'
+                sh '''
+                  docker build -t $IMAGE_NAME:$IMAGE_TAG .
+                '''
             }
         }
 
-        stage('Push Docker Image to DockerHub') {
+        stage('Tag image for Gitea Registry') {
+            steps {
+                sh '''
+                  docker tag $IMAGE_NAME:$IMAGE_TAG \
+                  $GITEA_REGISTRY/$GITEA_NAMESPACE/$IMAGE_NAME:$IMAGE_TAG
+                '''
+            }
+        }
+
+        stage('Push image to Gitea Registry') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
+                    credentialsId: 'gitea-registry-creds',
+                    usernameVariable: 'GITEA_USER',
+                    passwordVariable: 'GITEA_PASS'
                 )]) {
                     sh '''
-                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                    docker tag $IMAGE_NAME $DOCKER_USER/$IMAGE_NAME:latest
-                    docker push $DOCKER_USER/$IMAGE_NAME:latest
+                      echo "$GITEA_PASS" | docker login $GITEA_REGISTRY \
+                      -u "$GITEA_USER" --password-stdin
+
+                      docker push \
+                      $GITEA_REGISTRY/$GITEA_NAMESPACE/$IMAGE_NAME:$IMAGE_TAG
                     '''
                 }
             }
         }
+    }
 
-        stage('Push Code to Gitea') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'gitea-creds',
-                    usernameVariable: 'GIT_USER',
-                    passwordVariable: 'GIT_PASS'
-                )]) {
-                    sh '''
-                    git remote remove gitea || true
-                    git remote add gitea http://$GIT_USER:$GIT_PASS@20.199.168.227:3000/azureuser/devops-demo.git
-                    git fetch origin
-                    git checkout -B main origin/main
-                    git push gitea main --force
-                    '''
-                }
-            }
+    post {
+        success {
+            echo "✅ Image Docker buildée et pushée vers Gitea avec succès"
+        }
+        failure {
+            echo "❌ Erreur dans le pipeline"
         }
     }
 }
